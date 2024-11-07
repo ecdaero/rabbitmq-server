@@ -215,9 +215,9 @@ setup_steps() ->
                 fun rabbit_ct_helpers:ensure_rabbitmqctl_app/1,
                 fun rabbit_ct_helpers:ensure_rabbitmq_plugins_cmd/1,
                 fun set_lager_flood_limit/1,
+                fun configure_metadata_store/1,
                 fun start_rabbitmq_nodes/1,
-                fun share_dist_and_proxy_ports_map/1,
-                fun configure_metadata_store/1
+                fun share_dist_and_proxy_ports_map/1
             ];
         _ ->
             [
@@ -225,9 +225,9 @@ setup_steps() ->
                 fun rabbit_ct_helpers:load_rabbitmqctl_app/1,
                 fun rabbit_ct_helpers:ensure_rabbitmq_plugins_cmd/1,
                 fun set_lager_flood_limit/1,
+                fun configure_metadata_store/1,
                 fun start_rabbitmq_nodes/1,
-                fun share_dist_and_proxy_ports_map/1,
-                fun configure_metadata_store/1
+                fun share_dist_and_proxy_ports_map/1
             ]
     end.
 
@@ -999,57 +999,61 @@ share_dist_and_proxy_ports_map(Config) ->
 configured_metadata_store(Config) ->
     case rabbit_ct_helpers:get_config(Config, metadata_store) of
         khepri ->
-            {khepri, []};
-        {khepri, _FFs0} = Khepri ->
-            Khepri;
+            khepri;
         mnesia ->
             mnesia;
         _ ->
             case os:getenv("RABBITMQ_METADATA_STORE") of
-                "khepri" ->
-                    {khepri, []};
-                _ ->
-                    mnesia
+                "khepri" -> khepri;
+                _        -> mnesia
             end
     end.
 
 configure_metadata_store(Config) ->
     ct:log("Configuring metadata store..."),
+    Value = rabbit_ct_helpers:get_app_env(
+              Config, rabbit, forced_feature_flags_on_init, undefined),
     case configured_metadata_store(Config) of
-        {khepri, FFs0} ->
-            case enable_khepri_metadata_store(Config, FFs0) of
-                {skip, _} = Skip ->
-                    _ = stop_rabbitmq_nodes(Config),
-                    Skip;
-                Config1 ->
-                    Config1
+        khepri ->
+            ct:log("Enabling Khepri metadata store"),
+            case Value of
+                undefined ->
+                    rabbit_ct_helpers:merge_app_env(
+                      Config,
+                      {rabbit,
+                       [{forced_feature_flags_on_init,
+                         {rel, [khepri_db], []}}]});
+                _ ->
+                    rabbit_ct_helpers:merge_app_env(
+                      Config,
+                      {rabbit,
+                       [{forced_feature_flags_on_init,
+                         [khepri_db | Value]}]})
             end;
         mnesia ->
             ct:log("Enabling Mnesia metadata store"),
-            Config
+            case Value of
+                undefined ->
+                    rabbit_ct_helpers:merge_app_env(
+                      Config,
+                      {rabbit,
+                       [{forced_feature_flags_on_init,
+                         {rel, [], [khepri_db]}}]});
+                _ ->
+                    rabbit_ct_helpers:merge_app_env(
+                      Config,
+                      {rabbit,
+                       [{forced_feature_flags_on_init,
+                         Value -- [khepri_db]}]})
+            end
     end.
-
-enable_khepri_metadata_store(Config, FFs0) ->
-    ct:log("Enabling Khepri metadata store"),
-    FFs = [khepri_db | FFs0],
-    lists:foldl(fun(_FF, {skip, _Reason} = Skip) ->
-                        Skip;
-                   (FF, C) ->
-                        case enable_feature_flag(C, FF) of
-                            ok ->
-                                C;
-                            {skip, _} = Skip ->
-                                ct:pal("Enabling metadata store failed: ~p", [Skip]),
-                                Skip
-                        end
-                end, Config, FFs).
 
 %% Waits until the metadata store replica on Node is up to date with the leader.
 await_metadata_store_consistent(Config, Node) ->
     case configured_metadata_store(Config) of
         mnesia ->
             ok;
-        {khepri, _} ->
+        khepri ->
             RaClusterName = rabbit_khepri:get_ra_cluster_name(),
             Leader = rpc(Config, Node, ra_leaderboard, lookup_leader, [RaClusterName]),
             LastAppliedLeader = ra_last_applied(Leader),
