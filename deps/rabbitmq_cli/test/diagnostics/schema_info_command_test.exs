@@ -21,6 +21,7 @@ defmodule SchemaInfoCommandTest do
     }
   end
 
+  @tag :mnesia
   test "merge_defaults: adds all keys if none specificed", context do
     default_keys = ~w(name cookie active_replicas user_properties)
 
@@ -28,16 +29,19 @@ defmodule SchemaInfoCommandTest do
     assert default_keys == keys
   end
 
+  @tag :mnesia
   test "merge_defaults: includes table headers by default", _context do
     {_, opts} = @command.merge_defaults([], %{})
     assert opts[:table_headers]
   end
 
+  @tag :mnesia
   test "validate: returns bad_info_key on a single bad arg", context do
     assert @command.validate(["quack"], context[:opts]) ==
              {:validation_failure, {:bad_info_key, [:quack]}}
   end
 
+  @tag :mnesia
   test "validate: returns multiple bad args return a list of bad info key values", context do
     result = @command.validate(["quack", "oink"], context[:opts])
     assert match?({:validation_failure, {:bad_info_key, _}}, result)
@@ -45,6 +49,7 @@ defmodule SchemaInfoCommandTest do
     assert :lists.sort(keys) == [:oink, :quack]
   end
 
+  @tag :mnesia
   test "validate: return bad_info_key on mix of good and bad args", context do
     assert @command.validate(["quack", "cookie"], context[:opts]) ==
              {:validation_failure, {:bad_info_key, [:quack]}}
@@ -56,12 +61,14 @@ defmodule SchemaInfoCommandTest do
              {:validation_failure, {:bad_info_key, [:oink]}}
   end
 
+  @tag :mnesia
   @tag test_timeout: 0
   test "run: timeout causes command to return badrpc", context do
     assert run_command_to_list(@command, [["source_name"], context[:opts]]) ==
              {:badrpc, :timeout}
   end
 
+  @tag :mnesia
   test "run: can filter info keys", context do
     wanted_keys = ~w(name access_mode)
 
@@ -71,6 +78,7 @@ defmodule SchemaInfoCommandTest do
            )
   end
 
+  @tag :mnesia
   test "banner" do
     assert String.starts_with?(@command.banner([], %{node: "node@node"}), "Asking node")
   end
