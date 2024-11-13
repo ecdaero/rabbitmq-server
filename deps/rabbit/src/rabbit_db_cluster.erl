@@ -180,6 +180,14 @@ join(RemoteNode, NodeType)
                 ok ->
                     ok;
                 {error, _} ->
+                    %% Disconnect explicitly from remote nodes that we tried to
+                    %% cluster with, because it way interfere with the restart
+                    %% of RabbitMQ below and peer discovery.
+                    lists:foreach(
+                      fun(Node) ->
+                              _ = erlang:disconnect_node(Node)
+                      end, ClusterNodes),
+
                     %% We reset feature flags states again and make sure the
                     %% recorded states on disk are deleted.
                     rabbit_feature_flags:reset()
