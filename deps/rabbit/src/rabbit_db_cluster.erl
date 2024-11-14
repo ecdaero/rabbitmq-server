@@ -219,11 +219,14 @@ join(RemoteNode, NodeType)
     end.
 
 join_using_mnesia(ClusterNodes, NodeType) when is_list(ClusterNodes) ->
+    ?LOG_ALERT("Joining using Mnesia, ~p", [NodeType]),
     rabbit_mnesia:join_cluster(ClusterNodes, NodeType).
 
 join_using_khepri(ClusterNodes, disc) ->
+    ?LOG_ALERT("Joining using Khepri, ~p", [disc]),
     rabbit_khepri:add_member(node(), ClusterNodes);
 join_using_khepri(_ClusterNodes, ram = NodeType) ->
+    ?LOG_ALERT("Joining using Khepri, ~p", [ram]),
     {error, {node_type_unsupported, khepri, NodeType}}.
 
 -spec forget_member(Node, RemoveWhenOffline) -> ok when
