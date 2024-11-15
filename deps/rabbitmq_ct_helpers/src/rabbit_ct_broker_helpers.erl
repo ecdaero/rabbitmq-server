@@ -446,7 +446,7 @@ start_rabbitmq_node(Master, Config, NodeConfig, I) ->
                     Master ! {self(), I, NodeConfig4},
                     unlink(Master);
                 {ExpectedMetadataStore, UsedMetadataStore} ->
-                    stop_rabbitmq_node(Config, NodeConfig4),
+                    _ = stop_rabbitmq_node(Config, NodeConfig4),
                     Nodename = ?config(nodename, NodeConfig4),
                     Error = {skip,
                              rabbit_misc:format(
