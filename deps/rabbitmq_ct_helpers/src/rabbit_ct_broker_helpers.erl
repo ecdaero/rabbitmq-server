@@ -441,8 +441,22 @@ start_rabbitmq_node(Master, Config, NodeConfig, I) ->
               {failed_boot_attempts, Attempts + 1}),
             start_rabbitmq_node(Master, Config, NodeConfig5, I);
         NodeConfig4 ->
-            Master ! {self(), I, NodeConfig4},
-            unlink(Master)
+            case uses_expected_metadata_store(Config, NodeConfig4) of
+                {MetadataStore, MetadataStore} ->
+                    Master ! {self(), I, NodeConfig4},
+                    unlink(Master);
+                {ExpectedMetadataStore, UsedMetadataStore} ->
+                    stop_rabbitmq_node(Config, NodeConfig4),
+                    Nodename = ?config(nodename, NodeConfig4),
+                    Error = {skip,
+                             rabbit_misc:format(
+                               "Node ~s is using the ~s metadata store, "
+                               "~s was expected",
+                               [Nodename, UsedMetadataStore,
+                                ExpectedMetadataStore])},
+                    Master ! {self(), Error},
+                    unlink(Master)
+            end
     end.
 
 run_node_steps(Config, NodeConfig, I, [Step | Rest]) ->
@@ -883,6 +897,45 @@ query_node(Config, NodeConfig) ->
     cover_add_node(Nodename),
     rabbit_ct_helpers:set_config(NodeConfig, Vars).
 
+uses_expected_metadata_store(Config, NodeConfig) ->
+    Nodename = ?config(nodename, NodeConfig),
+    ExpectedMetadataStore = rabbit_ct_helpers:get_config(
+                              Config, metadata_store),
+    case ExpectedMetadataStore of
+        mnesia -> ok;
+        khepri -> maybe_enable_khepri_as_expected(Config, Nodename)
+    end,
+    IsKhepriEnabled = rpc(Config, Nodename, rabbit_khepri, is_enabled, []),
+    UsedMetadataStore = case IsKhepriEnabled of
+                            true  -> khepri;
+                            false -> mnesia
+                        end,
+    ct:pal(
+      "Metadata store on ~s: expected=~s, used=~s",
+      [Nodename, UsedMetadataStore, ExpectedMetadataStore]),
+    {ExpectedMetadataStore, UsedMetadataStore}.
+
+maybe_enable_khepri_as_expected(Config, Nodename) ->
+    RelativeForcedFeatureFlagsUnsupported = (
+      rpc(Config, Nodename,
+          erlang, function_exported,
+          [rabbit_feature_flags, get_require_level, 1])
+     ),
+    case RelativeForcedFeatureFlagsUnsupported of
+        true ->
+            ok;
+        false ->
+            ct:pal(
+              "Relative forced feature flags unsupported on ~s, "
+              "enable Khepri now",
+              [Nodename]),
+            Ret = enable_feature_flag(Config, [Nodename], khepri_db),
+            ct:pal(
+              "Tried to enable Khepri on ~s as expected: ~0p",
+              [Nodename, Ret]),
+            ok
+    end.
+
 maybe_cluster_nodes(Config) ->
     Clustered0 = rabbit_ct_helpers:get_config(Config, rmq_nodes_clustered),
     Clustered = case Clustered0 of
@@ -1013,19 +1066,22 @@ configure_metadata_store(Config) ->
     ct:log("Configuring metadata store..."),
     Value = rabbit_ct_helpers:get_app_env(
               Config, rabbit, forced_feature_flags_on_init, undefined),
-    case configured_metadata_store(Config) of
+    MetadataStore = configured_metadata_store(Config),
+    Config1 = rabbit_ct_helpers:set_config(
+                Config, {metadata_store, MetadataStore}),
+    case MetadataStore of
         khepri ->
             ct:log("Enabling Khepri metadata store"),
             case Value of
                 undefined ->
                     rabbit_ct_helpers:merge_app_env(
-                      Config,
+                      Config1,
                       {rabbit,
                        [{forced_feature_flags_on_init,
                          {rel, [khepri_db], []}}]});
                 _ ->
                     rabbit_ct_helpers:merge_app_env(
-                      Config,
+                      Config1,
                       {rabbit,
                        [{forced_feature_flags_on_init,
                          [khepri_db | Value]}]})
@@ -1035,13 +1091,13 @@ configure_metadata_store(Config) ->
             case Value of
                 undefined ->
                     rabbit_ct_helpers:merge_app_env(
-                      Config,
+                      Config1,
                       {rabbit,
                        [{forced_feature_flags_on_init,
                          {rel, [], [khepri_db]}}]});
                 _ ->
                     rabbit_ct_helpers:merge_app_env(
-                      Config,
+                      Config1,
                       {rabbit,
                        [{forced_feature_flags_on_init,
                          Value -- [khepri_db]}]})
