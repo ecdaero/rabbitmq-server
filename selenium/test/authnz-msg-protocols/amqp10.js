@@ -3,6 +3,21 @@ const { tokenFor, openIdConfiguration } = require('../utils')
 const { reset, expectUser, expectVhost, expectResource, allow, verifyAll } = require('../mock_http_backend')
 const {execSync} = require('child_process')
 
+var container = require('rhea')  // https://github.com/amqp/rhea
+var receivedAmqpMessageCount = 0
+var untilConnectionEstablished = new Promise((resolve, reject) => {
+  container.on('connection_open', function(context) {
+    resolve()
+  })
+})
+
+container.on('message', function (context) {
+    receivedAmqpMessageCount++
+})
+container.once('sendable', function (context) {
+    context.sender.send({body:'first message'})    
+})
+
 const profiles = process.env.PROFILES || ""
 var backends = ""
 for (const element of profiles.split(" ")) {
@@ -39,8 +54,39 @@ describe('Having AMQP 1.0 protocol enabled and the following auth_backends: ' + 
     }
   })
 
-  it('can open an AMQP 1.0 connection', function () {     
-    console.log(execSync(amqpClientCommand).toString())
+  it('can open an AMQP 1.0 connection', async function () {     
+    connection = container.connect(
+      {'host': process.env.RABBITMQ_HOSTNAME || 'rabbitmq',
+       'port': process.env.RABBITMQ_AMQP_PORT || 5672,
+       'username' : process.env.RABBITMQ_AMQP_USERNAME || 'guest',
+       'password' : process.env.RABBITMQ_AMQP_PASSWORD || 'guest',
+       'id': "selenium-connection-id",
+       'container_id': "selenium-container-id",
+       'scheme': process.env.RABBITMQ_AMQP_SCHEME || 'amqp',
+       //enable_sasl_external:true,
+       
+      })
+    connection.open_receiver({
+      source: 'examples',
+      target: 'receiver-target',
+      name: 'receiver-link'
+    })
+    sender = connection.open_sender({
+      target: 'examples',
+      source: 'sender-source',
+      name: 'sender-link'
+    })
+    await untilConnectionEstablished
+    var untilMessageReceived = new Promise((resolve, reject) => {
+      container.on('message', function(context) {
+        resolve()
+      })
+    })
+    sender.send({body:'second message'})    
+    await untilMessageReceived
+    assert.equal(2, receivedAmqpMessageCount)
+
+    //console.log(execSync(amqpClientCommand).toString())
   })
 
   after(function () {
