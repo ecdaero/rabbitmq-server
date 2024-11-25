@@ -118,14 +118,21 @@ auto_grow(Config) ->
     ?assertEqual(1, length(Members)),
 
     add_server_to_cluster(Server1, Server0),
+    clustering_utils:assert_cluster_status(
+      {[Server0, Server1], [Server0, Server1], [Server0, Server1]},
+      [Server0, Server1]),
     %% With 2 nodes in the cluster, target group size is not reached, so no
     %% new members should be available. We sleep a while so the periodic check
     %% runs
-    timer:sleep(4000),
     {ok, Members, _} = ra:members({queue_utils:ra_name(QQ), Server0}),
     ?assertEqual(1, length(Members)),
 
     add_server_to_cluster(Server2, Server0),
+    clustering_utils:assert_cluster_status(
+      {[Server0, Server1, Server2],
+       [Server0, Server1, Server2],
+       [Server0, Server1, Server2]},
+      [Server0, Server1, Server2]),
     %% With 3 nodes in the cluster, target size is met so eventually it should
     %% be 3 members
     wait_until(fun() ->
@@ -184,6 +191,11 @@ auto_shrink(Config) ->
     Ch = rabbit_ct_client_helpers:open_channel(Config, Server0),
     add_server_to_cluster(Server1, Server0),
     add_server_to_cluster(Server2, Server0),
+    clustering_utils:assert_cluster_status(
+      {[Server0, Server1, Server2],
+       [Server0, Server1, Server2],
+       [Server0, Server1, Server2]},
+      [Server0, Server1, Server2]),
 
     QQ = ?config(queue_name, Config),
     ?assertEqual({'queue.declare_ok', QQ, 0, 0},
