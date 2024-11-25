@@ -24,13 +24,49 @@ function getAmqpsConnectionOptions() {
   options['cert'] = fs.readFileSync(path.resolve(certsLocation,'client_rabbitmq_certificate.pem'))
   options['ca'] = fs.readFileSync(path.resolve(certsLocation,'ca_rabbitmq_certificate.pem')) 
 }
-module.exports = {
+function getConnectionOptions() {
+  switch(process.env.RABBITMQ_AMQP_SCHEME || 'amqp'){
+    case 'amqp':
+      return getAmqpConnectionOptions()
+    case 'amqps':
+      return getAmqpsConnectionOptions()
+  }  
+}
+module.exports = {  
+  
   open: () => {
-    switch(process.env.RABBITMQ_AMQP_SCHEME || 'amqp'){
-      case 'amqp':
-        return container.connect(getAmqpConnectionOptions())
-      case 'amqps':
-        return container.connect(getAmqpsConnectionOptions())
-    }    
+    let promise = new Promise((resolve, reject) => {
+      container.on('connection_open', function(context) {
+        resolve()
+      })
+    })
+    let connection = container.connect(getConnectionOptions())
+    let receiver = connection.open_receiver({
+      source: 'examples',
+      target: 'receiver-target',
+      name: 'receiver-link'
+    })
+    let sender = connection.open_sender({
+      target: 'examples',
+      source: 'sender-source',
+      name: 'sender-link'
+    })
+    return {
+      'connection': connection,
+      'promise' : promise,
+      'receiver' : receiver,
+      'sender' : sender
+    }
+  },
+  close: (connection) => {
+    if (connection != null) {
+      connection.close()
+    }
+  },
+  once: (event, callback) => {
+    container.once(event, callback)
+  },
+  on: (event, callback) => {
+    container.on(event, callback)
   }
 }
