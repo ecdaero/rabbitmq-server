@@ -2,7 +2,6 @@ const assert = require('assert')
 const { tokenFor, openIdConfiguration } = require('../utils')
 const { reset, expectUser, expectVhost, expectResource, allow, verifyAll } = require('../mock_http_backend')
 const { open: openAmqp, once: onceAmqp, on: onAmqp, close: closeAmqp } = require('../amqp')
-const {execSync} = require('child_process')
 
 var receivedAmqpMessageCount = 0
 var untilConnectionEstablished = new Promise((resolve, reject) => {
@@ -30,9 +29,6 @@ describe('Having AMQP 1.0 protocol enabled and the following auth_backends: ' + 
   let expectations = []
   let username = process.env.RABBITMQ_AMQP_USERNAME
   let password = process.env.RABBITMQ_AMQP_PASSWORD
-  let usemtls = process.env.AMQP_USE_MTLS
-  let amqpClientCommand = "npm run amqp10_roundtriptest" + 
-    (usemtls ? "" : " " + username + " " + password)
   let amqp;
 
   before(function () {
@@ -66,8 +62,6 @@ describe('Having AMQP 1.0 protocol enabled and the following auth_backends: ' + 
     amqp.sender.send({body:'second message'})    
     await untilMessageReceived
     assert.equal(2, receivedAmqpMessageCount)
-
-    //console.log(execSync(amqpClientCommand).toString())
   })
 
   after(function () {
