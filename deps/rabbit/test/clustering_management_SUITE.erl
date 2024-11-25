@@ -674,6 +674,7 @@ get_raft_status(Config, Node) ->
 reset_in_khepri(Config) ->
     ClassicQueue = <<"classic-queue">>,
     [Rabbit, Hare | _] = cluster_members(Config),
+    assert_cluster_status({[Rabbit, Hare], [Rabbit, Hare]}, [Rabbit, Hare]),
 
     RCh = rabbit_ct_client_helpers:open_channel(Config, Rabbit),
     ?assertMatch(#'queue.declare_ok'{}, declare(RCh, ClassicQueue)),
