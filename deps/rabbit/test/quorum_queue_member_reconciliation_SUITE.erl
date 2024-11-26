@@ -90,6 +90,7 @@ end_per_testcase(Testcase, Config) ->
 reset_nodes([], _Leader) ->
     ok;
 reset_nodes([Node| Nodes], Leader) ->
+    Members = erpc:call(Leader, rabbit_nodes, all, []),
     ok = rabbit_control_helper:command(stop_app, Node),
     case rabbit_control_helper:command(forget_cluster_node, Leader, [atom_to_list(Node)]) of
         ok -> ok;
@@ -97,6 +98,11 @@ reset_nodes([Node| Nodes], Leader) ->
     end,
     ok = rabbit_control_helper:command(reset, Node),
     ok = rabbit_control_helper:command(start_app, Node),
+    clustering_utils:assert_cluster_status({[Node], [Node], [Node]}, [Node]),
+    RemainingNodes = Members -- [Node],
+    clustering_utils:assert_cluster_status(
+      {RemainingNodes, RemainingNodes, RemainingNodes},
+      [Leader]),
     reset_nodes(Nodes, Leader).
 
 
