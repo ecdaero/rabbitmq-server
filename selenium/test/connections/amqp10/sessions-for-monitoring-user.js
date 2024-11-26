@@ -111,7 +111,9 @@ describe('Given an amqp10 connection opened, listed and clicked on it', function
   after(async function () {    
     await teardown(driver, this, captureScreen)
     try {
-      closeAmqp(amqp.connection)
+      if (amqp != null) {
+        closeAmqp(amqp.connection)
+      }
     } catch (error) {
       console.error("Failed to close amqp10 connection due to " + error);      
     }  
