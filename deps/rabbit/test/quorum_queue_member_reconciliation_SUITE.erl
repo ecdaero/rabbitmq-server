@@ -79,9 +79,14 @@ merge_app_env(Config) ->
       {ra, [{min_wal_roll_over_interval, 30000}]}).
 
 end_per_testcase(Testcase, Config) ->
-    [Server0, Server1, Server2] =
+    [Server0, Server1, Server2] = Servers =
         rabbit_ct_broker_helpers:get_node_configs(Config, nodename),
     reset_nodes([Server1, Server2], Server0),
+    lists:foreach(
+      fun(Node) ->
+              clustering_utils:assert_cluster_status(
+                {[Node], [Node], [Node]}, [Node])
+      end, Servers),
     Config1 = rabbit_ct_helpers:run_steps(
                 Config,
                 rabbit_ct_client_helpers:teardown_steps()),
@@ -90,7 +95,6 @@ end_per_testcase(Testcase, Config) ->
 reset_nodes([], _Leader) ->
     ok;
 reset_nodes([Node| Nodes], Leader) ->
-    Members = erpc:call(Leader, rabbit_nodes, all, []),
     ok = rabbit_control_helper:command(stop_app, Node),
     case rabbit_control_helper:command(forget_cluster_node, Leader, [atom_to_list(Node)]) of
         ok -> ok;
@@ -98,11 +102,6 @@ reset_nodes([Node| Nodes], Leader) ->
     end,
     ok = rabbit_control_helper:command(reset, Node),
     ok = rabbit_control_helper:command(start_app, Node),
-    clustering_utils:assert_cluster_status({[Node], [Node], [Node]}, [Node]),
-    RemainingNodes = Members -- [Node],
-    clustering_utils:assert_cluster_status(
-      {RemainingNodes, RemainingNodes, RemainingNodes},
-      [Leader]),
     reset_nodes(Nodes, Leader).
 
 
