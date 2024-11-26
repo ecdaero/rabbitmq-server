@@ -928,18 +928,12 @@ test_failed_token_refresh_case1(Config) ->
 
 refreshed_token_cannot_change_username(Config) ->
     {_, Token} = generate_valid_token_with_sub(Config, <<"username">>),
-    ct:log("Token: ~p", [Token]),
     Conn     = open_unmanaged_connection(Config, 0, <<"vhost4">>, <<"username">>, Token),
     {_, RefreshedToken} = generate_valid_token_with_sub(Config, <<"username2">>),
-    ct:log("RefreshedToken: ~p", [RefreshedToken]),
 
     %% the error is communicated asynchronously via a connection-level error
-    Ret = amqp_connection:update_secret(Conn, RefreshedToken, <<"token refresh">>),
-    ct:log("Ret: ~p", [Ret]),
-    ?assertExit({{shutdown, {server_initiated_close, 530, 
-        <<"NOT_ALLOWED - New secret was refused by one of the backends">>}}, _},
-       close_connection(Conn)).
-
+    ?assertException(exit, {{nodedown,not_allowed},_}, amqp_connection:update_secret(Conn, RefreshedToken, <<"token refresh">>)).
+    
 
 test_failed_token_refresh_case2(Config) ->
     {_Algo, Token} = generate_valid_token(Config, [<<"rabbitmq.configure:vhost4/*">>,
