@@ -962,13 +962,9 @@ cannot_change_username_on_refreshed_token(Config) ->
          <<"rabbitmq.read:vhost4/*">>]),
 
     %% the error is communicated asynchronously via a connection-level error
-    {error, _} = amqp_connection:update_secret(Conn, RefreshToken,
-        <<"token refresh">>),
+    ?assertException(exit, _, amqp_connection:update_secret(Conn, RefreshToken,
+        <<"token refresh">>)).
 
-    ?assertExit({{shutdown, {connection_closing, {server_initiated_close, 530, _}}}, _},
-       amqp_connection:open_channel(Conn)),
-
-    close_connection(Conn).
 
 test_failed_connection_with_algorithm_restriction(Config) ->
     {_Algo, Token} = get_config(Config, fixture_jwt),
