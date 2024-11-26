@@ -52,7 +52,8 @@ groups() ->
 
      {token_refresh, [], [
                        test_failed_token_refresh_case1,
-                       test_failed_token_refresh_case2
+                       test_failed_token_refresh_case2,
+                       refreshed_token_cannot_change_username
      ]},
 
      {extra_scopes_source, [], [
@@ -323,21 +324,33 @@ preconfigure_node(Config) ->
 
     rabbit_ct_helpers:set_config(Config, {fixture_jwk, Jwk}).
 
+generate_valid_token_with_sub(Config, Sub) ->
+    generate_valid_token(Config, 
+        ?UTIL_MOD:full_permission_scopes(), undefined, Sub).
+
 generate_valid_token(Config) ->
     generate_valid_token(Config, ?UTIL_MOD:full_permission_scopes()).
 
 generate_valid_token(Config, Scopes) ->
-    generate_valid_token(Config, Scopes, undefined).
+    generate_valid_token(Config, Scopes, undefined, undefined).
 
 generate_valid_token(Config, Scopes, Audience) ->
+    generate_valid_token(Config, Scopes, Audience, undefined).
+
+generate_valid_token(Config, Scopes, Audience, Sub) ->
     Jwk = case rabbit_ct_helpers:get_config(Config, fixture_jwk) of
               undefined -> ?UTIL_MOD:fixture_jwk();
               Value     -> Value
           end,
-    Token = case Audience of
+    Token0 = case Audience of
         undefined -> ?UTIL_MOD:fixture_token_with_scopes(Scopes);
-        DefinedAudience -> maps:put(<<"aud">>, DefinedAudience, ?UTIL_MOD:fixture_token_with_scopes(Scopes))
+        DefinedAudience -> maps:put(<<"aud">>, DefinedAudience, 
+            ?UTIL_MOD:fixture_token_with_scopes(Scopes))
     end,
+    Token = case Sub of 
+        undefined -> Token0;
+        _ -> maps:put(<<"sub">>, Sub, Token0)
+    end,    
     ?UTIL_MOD:sign_token_hs(Token, Jwk).
 
 generate_valid_token_with_extra_fields(Config, ExtraFields) ->
@@ -912,6 +925,21 @@ test_failed_token_refresh_case1(Config) ->
        amqp_channel:call(Ch2, #'queue.declare'{queue = <<"a.q">>, exclusive = true})),
 
     close_connection(Conn).
+
+refreshed_token_cannot_change_username(Config) ->
+    {_, Token} = generate_valid_token_with_sub(Config, <<"username">>),
+    ct:log("Token: ~p", [Token]),
+    Conn     = open_unmanaged_connection(Config, 0, <<"vhost4">>, <<"username">>, Token),
+    {_, RefreshedToken} = generate_valid_token_with_sub(Config, <<"username2">>),
+    ct:log("RefreshedToken: ~p", [RefreshedToken]),
+
+    %% the error is communicated asynchronously via a connection-level error
+    Ret = amqp_connection:update_secret(Conn, RefreshedToken, <<"token refresh">>),
+    ct:log("Ret: ~p", [Ret]),
+    ?assertExit({{shutdown, {server_initiated_close, 530, 
+        <<"NOT_ALLOWED - New secret was refused by one of the backends">>}}, _},
+       close_connection(Conn)).
+
 
 test_failed_token_refresh_case2(Config) ->
     {_Algo, Token} = generate_valid_token(Config, [<<"rabbitmq.configure:vhost4/*">>,

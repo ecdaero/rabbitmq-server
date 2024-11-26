@@ -121,7 +121,7 @@ update_state(AuthUser, NewToken) ->
                                                     impl = fun() -> DecodedToken end}};
                         {error, mismatch_username_after_token_refresh} -> 
                             {refused, 
-                                rabbit_misc:format("Not allowed to change username on refreshed token")};
+                                "Not allowed to change username on refreshed token"};
                         {error, Error} ->
                             {refused, 
                                 rabbit_misc:format("Failed to refresh token due to ~p", [Error])}
